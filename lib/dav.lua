@@ -1,3 +1,44 @@
+string.startswith = function(s, prefix)
+    assert(s)
+    assert(prefix)
+    local prefixLen = #prefix
+    return string.sub(s, 1, prefixLen) == prefix
+end
+--- Identify and remove DAV namespace prefixes on element names.
+--- This function reads the `_attr` sub-table to find `xmlns` namespace
+--- declarations. If any declared namespace is `DAV:`, that namespace's prefix
+--- is removed from the tag name and the namespace attribute is removed.  If
+--- this removal results in an empty _attr table, that is also removed.
+--- @param t ({[string]: string}) A table full of XML-equivalent data, to be modified in-place.
+--- @param knownNamespaces (string[]?) Any namespace prefixes that are already known to be for DAV.
+local function simplifyDavNamespace(t, knownNamespaces)
+    if not knownNamespaces then
+        knownNamespaces = {}
+    end
+    for key, value in pairs(t) do
+        if not string.startswith(key, "_") then
+            if value._attr and type(value._attr) == "table" then
+                for attrKey, attrValue in pairs(value._attr) do
+                    if string.startswith(attrKey, "xmlns") and attrValue == "DAV:" then
+                        if attrKey ~= "xmlns" then
+                            local namespacePrefix = string.sub(attrKey, #"xmlns:")
+                            table.insert(knownNamespaces, namespacePrefix .. ":")
+                            -- TODO: remove xmlns keys
+                        end
+                    end
+                end
+            end
+        end
+        for _, ns in ipairs(knownNamespaces) do
+            if string.startswith(key, ns) then
+                local newKey = string.sub(key, #ns)
+                t[newKey] = t[key]
+                t[key] = nil
+            end
+        end
+    end
+end
+
 local function Rfc3339Time(secs)
     local year, mon, mday, hour, min, sec, gmtoffsec = unix.localtime(secs)
     return '%.4d-%.2d-%.2dT%.2d:%.2d:%.2d%+.2d:%.2d' % {
@@ -60,6 +101,8 @@ local function handlePropfind(path, body)
     local parser = Xml2Lua.parser(handler)
     parser:parse(body)
     print(EncodeJson(handler.root))
+    simplifyDavNamespace(handler.root)
+    print(EncodeJson(handler.root))
     local responses = {}
     for tag, value in pairs(handler.root) do
         if tag == "propfind" then
@@ -91,25 +134,11 @@ local function handlePropfind(path, body)
     }}
     SetStatus(207)
     SetHeader("Content-Type", "application/xml")
-    SetHeader("DAV", "1")
 
     Write[[<?xml version="1.0" encoding="utf-8"?>]]
     local answerXml = Xml2Lua.toXml(fullAnswer)
     Log(kLogDebug, answerXml)
     Write(answerXml)
-    --[[
-    <D:multistatus xmlns:D="DAV:">
-        <D:response>
-            <D:href>http://localhost:8080/</D:href>
-            <D:propstat>
-                <D:prop>
-                    <D:resourcetype>
-                        <D:collection/>
-                    </D:resourcetype>
-                </D:prop>
-            </D:propstat>
-        </D:response>
-    </D:multistatus>]]
 end
 
 return {handlePropfind = handlePropfind}

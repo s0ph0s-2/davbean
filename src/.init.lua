@@ -4,7 +4,7 @@ Handler = require "xmlhandler.tree"
 local about = require "about"
 local dav = require "dav"
 
-User_Agent = string.format(
+ServerVersion = string.format(
     "%s/%s; redbean/%s",
     about.NAME,
     about.VERSION,
@@ -12,8 +12,22 @@ User_Agent = string.format(
 )
 
 Root = unix.realpath(arg[1])
+ProgramDirectory(Root)
+
+function OnWorkerStart()
+    -- set limits on memory and cpu just in case
+    -- assert(unix.setrlimit(unix.RLIMIT_RSS, 2*1024*1024))
+    assert(unix.setrlimit(unix.RLIMIT_CPU, 2))
+    -- we only need access to files in the provided directory
+    assert(unix.unveil(Root, "r"))
+    assert(unix.unveil(nil, nil))
+    -- we only need minimal system calls and file reading
+    assert(unix.pledge("stdio rpath inet unix", nil, unix.PLEDGE_PENALTY_RETURN_EPERM))
+end
 
 function OnHttpRequest()
+    SetHeader("Server", ServerVersion)
+    SetHeader("DAV", "1")
     local method = GetMethod()
     local headers = GetHeaders()
     local body = GetBody()
@@ -25,16 +39,15 @@ function OnHttpRequest()
     if method == "OPTIONS" then
         SetStatus(204)
         SetHeader("Allow", "OPTIONS, GET, HEAD, PROPFIND")
-        SetHeader("DAV", "1")
+        Log(kLogDebug, "Sending OPTIONS answer for read-only methods")
         return
     end
     if method == "PROPFIND" then
         dav.handlePropfind(path, body)
         return
     end
-    if method == "GET" then
-        SetHeader("DAV", "1")
-        ServeAsset(Root .. path)
+    if method == "GET" or method == "HEAD" then
+        Route()
         return
     end
     if method == "PROPPATCH" or method == "MKCOL" or method == "POST" or method == "DELETE" or method == "PUT" or method == "COPY" or method == "MOVE" or method == "LOCK" or method == "UNLOCK" then
