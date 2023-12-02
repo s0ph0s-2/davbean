@@ -9,19 +9,20 @@ end
 --- declarations. If any declared namespace is `DAV:`, that namespace's prefix
 --- is removed from the tag name and the namespace attribute is removed.  If
 --- this removal results in an empty _attr table, that is also removed.
---- @param t ({[string]: string}) A table full of XML-equivalent data, to be modified in-place.
+--- @param t (table) A table full of XML-equivalent data, to be modified in-place.
 --- @param knownNamespaces (string[]?) Any namespace prefixes that are already known to be for DAV.
 local function simplifyDavNamespace(t, knownNamespaces)
     if not knownNamespaces then
         knownNamespaces = {}
     end
     for key, value in pairs(t) do
+        -- Find namespace prefixes for DAV
         if not string.startswith(key, "_") then
             if value._attr and type(value._attr) == "table" then
                 for attrKey, attrValue in pairs(value._attr) do
                     if string.startswith(attrKey, "xmlns") and attrValue == "DAV:" then
                         if attrKey ~= "xmlns" then
-                            local namespacePrefix = string.sub(attrKey, #"xmlns:")
+                            local namespacePrefix = string.sub(attrKey, #"xmlns:" + 1)
                             table.insert(knownNamespaces, namespacePrefix .. ":")
                             -- TODO: remove xmlns keys
                         end
@@ -29,12 +30,17 @@ local function simplifyDavNamespace(t, knownNamespaces)
                 end
             end
         end
+        -- Remove any discovered namespace prefixes for DAV from this element
         for _, ns in ipairs(knownNamespaces) do
             if string.startswith(key, ns) then
-                local newKey = string.sub(key, #ns)
+                local newKey = string.sub(key, #ns + 1)
                 t[newKey] = t[key]
                 t[key] = nil
             end
+        end
+        -- Recurse to this element's children
+        if not string.startswith(key, "_") and type(value) == "table" then
+            simplifyDavNamespace(value, knownNamespaces)
         end
     end
 end
@@ -141,4 +147,7 @@ local function handlePropfind(path, body)
     Write(answerXml)
 end
 
-return {handlePropfind = handlePropfind}
+return {
+    handlePropfind = handlePropfind,
+    simplifyDavNamespace = simplifyDavNamespace
+}

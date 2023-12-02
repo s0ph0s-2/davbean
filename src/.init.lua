@@ -25,9 +25,12 @@ function OnWorkerStart()
     assert(unix.pledge("stdio rpath inet unix", nil, unix.PLEDGE_PENALTY_RETURN_EPERM))
 end
 
-function OnHttpRequest()
+function SetCommonHeaders()
     SetHeader("Server", ServerVersion)
     SetHeader("DAV", "1")
+end
+
+function OnHttpRequest()
     local method = GetMethod()
     local headers = GetHeaders()
     local body = GetBody()
@@ -38,20 +41,25 @@ function OnHttpRequest()
     Log(kLogDebug, body)
     if method == "OPTIONS" then
         SetStatus(204)
+        -- The SetHeader calls must come after SetStatus because SetStatus clears the header buffer.
         SetHeader("Allow", "OPTIONS, GET, HEAD, PROPFIND")
+        SetCommonHeaders()
         Log(kLogDebug, "Sending OPTIONS answer for read-only methods")
         return
     end
     if method == "PROPFIND" then
         dav.handlePropfind(path, body)
+        SetCommonHeaders()
         return
     end
     if method == "GET" or method == "HEAD" then
         Route()
+        SetCommonHeaders()
         return
     end
     if method == "PROPPATCH" or method == "MKCOL" or method == "POST" or method == "DELETE" or method == "PUT" or method == "COPY" or method == "MOVE" or method == "LOCK" or method == "UNLOCK" then
         ServeError(405, "This WebDAV server is read-only")
+        SetCommonHeaders()
         return
     end
 end

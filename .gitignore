@@ -1,6 +1,8 @@
 davbean.com
 lib/about.lua
 redbean-*.com
+test-redbean-*.com
 srv/
+srv-test/
 .nova/
 example_root/

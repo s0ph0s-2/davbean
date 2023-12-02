@@ -18,7 +18,7 @@ clean:
 	rm -r srv srv-test
 
 test: test-$(REDBEAN)
-	./$< -i test/main.lua
+	./$< -i test/test.lua
 
 .PHONY: build clean test
 
