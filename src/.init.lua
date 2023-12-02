@@ -53,7 +53,7 @@ function OnHttpRequest()
         return
     end
     if method == "GET" or method == "HEAD" then
-        Route()
+        dav.handleGet(path)
         SetCommonHeaders()
         return
     end

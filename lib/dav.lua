@@ -147,7 +147,124 @@ local function handlePropfind(path, body)
     Write(answerXml)
 end
 
+local function humanFileSize(bytes)
+    local suffix = " B"
+    local hvalue = bytes
+    if hvalue >= 1024 then
+        hvalue = hvalue / 1024
+        suffix = "KB"
+    end
+    if hvalue >= 1024 then
+        hvalue = hvalue / 1024
+        suffix = "MB"
+    end
+    if hvalue >= 1024 then
+        hvalue = hvalue / 1024
+        suffix = "GB"
+    end
+    if hvalue >= 1024 then
+        hvalue = hvalue / 1024
+        suffix = "TB"
+    end
+    if hvalue >= 1024 then
+        hvalue = hvalue / 1024
+        suffix = "PB"
+    end
+    if hvalue >= 1024 then
+        hvalue = hvalue / 1024
+        suffix = "EB"
+    end
+    if hvalue >= 1024 then
+        hvalue = hvalue / 1024
+        suffix = "YB"
+    end
+    return string.format("%.0f %s", hvalue, suffix)
+end
+
+local function handleGet(path)
+    local fullpath = Root .. path
+    local stat = unix.stat(fullpath)
+    if unix.S_ISDIR(stat:mode()) then
+        Write(string.format([[<!doctype html>
+            <meta charset="utf-8">
+            <title>Index of %s</title>
+            <style>
+            html { color: #111; font-family: 'Comic Sans MS', 'Chalkboard SE', 'Comic Neue', sans-serif; }
+            a { text-decoration: none; }
+            pre a:hover { color: #00e; border-bottom: 1px solid #ccc; }
+            h1 a { color: #111; }
+            </style>
+            <header><h1>Index of %s</h1><hr></header>
+            <pre>]],
+            path,
+            path
+        ))
+        local entries = {}
+        local nameWidth = 80
+        local fileSizeWidth = 0
+        for name, kind, _, _ in assert(unix.opendir(fullpath)) do
+            Log(kLogDebug, "Examining " .. name)
+            -- Exclude block devices, symlinks, etc.
+            if not string.startswith(name, ".")
+                and not IsHiddenPath(name)
+                and (kind == unix.DT_REG or kind == unix.DT_DIR)
+            then
+                Log(kLogDebug, "File is OK to index")
+                if kind == unix.DT_DIR then
+                    name = name ..  "/"
+                end
+                Log(kLogDebug, "About to stat " .. fullpath .. name)
+                local substat, errno = unix.stat(fullpath .. name)
+                if substat then
+                    local controlSafeName = VisualizeControlCodes(name)
+                    nameWidth = math.max(nameWidth, GetMonospaceWidth(controlSafeName))
+                    local sz = substat:size()
+                    local szStr = humanFileSize(sz)
+                    fileSizeWidth = math.max(fileSizeWidth, #szStr)
+                    table.insert(entries, {
+                        kind,
+                        name,
+                        EscapeHtml(controlSafeName),
+                        szStr,
+                        substat:birthtim()
+                    })
+                else
+                    Log(kLogWarn, "Failed to read file while generating index page: " .. tostring(errno))
+                end
+            end
+        end
+        local function compareEntries(a, b)
+            -- Sort first by kind, then by name.
+            if a[1] ~= b[1] then
+                -- Directories come before regular files.
+                return a[1] < b[1]
+            else
+                return a[2] < b[2]
+            end
+        end
+        table.sort(entries, compareEntries)
+        -- Lua's string.format implementation doesn't support * modifiers :(
+        local fmtstr = string.format('<a href="%%s">%%-%ds</a>  %%s  %%%ds\n', nameWidth, fileSizeWidth)
+        for _, entry in ipairs(entries) do
+            local urlSafePath = EscapeHtml(EscapePath(path .. entry[2]))
+            local rfc3339Birthtm = Rfc3339Time(entry[5])
+            Write(string.format(
+                fmtstr,
+                urlSafePath,
+                entry[3],
+                rfc3339Birthtm,
+                entry[4]
+            ))
+        end
+        Write[[</pre>]]
+    else
+        -- Not a directory; don't generate index page.
+        Route()
+    end
+end
+
 return {
     handlePropfind = handlePropfind,
+    handleGet = handleGet,
     simplifyDavNamespace = simplifyDavNamespace
 }
