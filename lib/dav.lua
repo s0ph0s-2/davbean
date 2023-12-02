@@ -119,7 +119,7 @@ local function handlePropfind(path, body)
             })
             if depth == "1" then
                 for name, kind, ino, off in assert(unix.opendir(realpath)) do
-                    if name ~= '.' and name ~= '..' then
+                    if not string.startswith(name, ".") then
                         local memberPath = realpath .. name
                         local memberPropStats = processPropfindTag(
                             memberPath,
