@@ -22,7 +22,7 @@ function OnWorkerStart()
     assert(unix.unveil(Root, "r"))
     assert(unix.unveil(nil, nil))
     -- we only need minimal system calls and file reading
-    assert(unix.pledge("stdio rpath inet unix", nil, unix.PLEDGE_PENALTY_RETURN_EPERM))
+    assert(unix.pledge("stdio rpath", nil, unix.PLEDGE_PENALTY_RETURN_EPERM))
 end
 
 function SetCommonHeaders()
